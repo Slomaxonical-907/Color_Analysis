@@ -1,4 +1,4 @@
-import requests, math, io, sys, cv2
+import requests, math, io, sys, cv2, os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -11,29 +11,29 @@ from PIL import Image
 from som import SOM
 
 
-def process_color_maps(n_colors, img_link):
+def process_color_maps(n_colors, img_dir, max_size=420):
     # This is the main processing flow for downloading image and 
     # processing the color palette. 
-    img = download_image(img_link)
-    if img is None:
-        return
-    kmeans = k_means(img, n_colors)
-    plot_3d_pixels(img, kmeans)
-    plot_kmeans_palette(kmeans, n_colors)
-    som_plot(img, n_colors)
+    for filename in os.listdir(img_dir):
+        file = os.path.join(img_dir, filename)
+        if os.path.isfile(file):
+            print(filename)
+            img = get_image(file,max_size)
+            if img is None:
+                return
+            kmeans = k_means(img, n_colors)
+            gs = plot_3d_pixels(img, kmeans)
+            plot_kmeans_palette(kmeans, n_colors, gs)
+            som_plot(img, n_colors, gs)
+            #saving in a sub-dir
+            plt.savefig(img_dir+'/output/Info_'+filename)
+            plt.show()
 
-def download_image(url): 
-    # Method for downloading image and scaling the resolution and 
-    # color values. 
-    max_size = 200
+def get_image(loc,size):
+    # Method for getting the img, scaling the resolution and color values.
+    max_size = size
     try:
-        r = requests.get(url, stream=True)
-    except:
-        print('Error in loading image')
-        print(sys.exc_info()[0])
-        return None
-    try:
-        img = np.asarray(Image.open(io.BytesIO(r.content)))
+        img = np.asarray(Image.open(loc))
     except:
         print('Failed to parse image')
         print(sys.exc_info()[0])
@@ -94,27 +94,33 @@ def plot_3d_pixels(img, kmeans):
     print('K-means cluster centers in RGB space:')
 
     # Plot the original image pixels.
-    fig = plt.figure(figsize=(10,10))
-    ax = fig.add_subplot(111, projection='3d')
-    ax.scatter(reds, greens, blues, c=colors, alpha=1, s=10, marker='.')
+    fig = plt.figure(figsize=(15,10))
+    gs = fig.add_gridspec(3, 3, hspace=0.05, wspace=0.07)
+    fig.tight_layout()
+    fig.set_facecolor('#fff')
+    # ax = fig.add_subplot(111, projection='3d')
+    # ax = plt.subplot(221, projection='3d')
+    ax = plt.subplot(gs.new_subplotspec((0,0), colspan=2, rowspan=3), projection='3d')
+    ax.scatter(reds, greens, blues, c=colors, alpha=1, s=10, marker='.', zorder=1)
 
     # Plot the K-means clustering center points. 
     xs = kmeans.cluster_centers_[:, 0]
     ys = kmeans.cluster_centers_[:, 1]
     zs = kmeans.cluster_centers_[:, 2]
-    colors = kmeans.cluster_centers_
-    ax.scatter(xs, ys, zs, c=colors, marker='o', alpha=1, s=500, edgecolors=(0,0,0))
+    coolors = kmeans.cluster_centers_
+    ax.scatter(xs, ys, zs, c=coolors, marker='o', alpha=1, s=500, edgecolors=(0,0,0), zorder=100)
 
     ax.set_xlabel('Red')
     ax.set_ylabel('Green')
     ax.set_zlabel('Blue')
-    plt.show()
-    
-def plot_kmeans_palette(kmeans, n_colors):
+    return gs
+    # plt.savefig(curr_file) #at first i wanted each part seperated.
+
+def plot_kmeans_palette(kmeans, n_colors,gs):
     # Method for plotting the palette from K-means clustering algorithm. 
     # The palette is sorted and the color RGB values are printed. 
 
-    color_palette = np.ones((10, n_colors*10, 3))
+    color_palette = np.ones(( n_colors*10, 10,3)) #switched to vertical palette
     clusters = kmeans.cluster_centers_
 
     def colsort(arr, col_index, tol):
@@ -147,14 +153,20 @@ def plot_kmeans_palette(kmeans, n_colors):
     gray_pal = np.flip(gray_pal, axis=0)
 
     # Put the palette elements together
-    palette = np.concatenate([red_pal, green_pal, blue_pal, gray_pal])    
+    palette = np.concatenate([red_pal, green_pal, blue_pal, gray_pal])
+    tickPlacement = []
     for i in range(palette.shape[0]):
-        color_palette[:, i*10:(i+1)*10] = palette[i]
-    
-    plt.figure()
+        color_palette[i*10:(i+1)*10,:] = palette[i]
+        tickPlacement.append(i*10+5)
+
+    plt.subplot(gs.new_subplotspec((0,2), colspan=1, rowspan=1))
     plt.imshow(color_palette)
-    plt.axis('off')
-    plt.show()
+    ax = plt.gca()
+    ax.get_xaxis().set_visible(False)
+    ax.yaxis.tick_right()
+    ax.set_ylabel('Palette')
+    ax.set_anchor('SW')
+    # plt.savefig(curr_file)
 
     # Print the RGB values for the palette. This happens most beautifully
     # by printing the data in Pandas DataFrame. 
@@ -162,19 +174,32 @@ def plot_kmeans_palette(kmeans, n_colors):
     hex_df = pd.DataFrame(np.zeros((n_colors)))
     palette *= 255
     palette = palette.astype(np.int)
+    colors = []
 
     for i in range(n_colors):
         rgb_df.iloc[i] = str(palette[i])
         hex_color = '#{:02x}{:02x}{:02x}'.format(palette[i, 0], palette[i, 1], palette[i, 2])
         hex_df.iloc[i] = hex_color
- 
-    print('RGB values:')
-    print(rgb_df.T)
+        color = '{:02x}{:02x}{:02x}'.format(palette[i, 0], palette[i, 1], palette[i, 2])
+        colors.append(color)
+    # print('RGB values:')
+    # print(rgb_df.T)
     print('\n')
     print('HEX color values:')
-    print(hex_df.T)    
-    
-def som_plot(img, som_dim):
+    print(hex_df.T)
+
+    #getting color names from the api and appending them to the palette
+    PARAMS = {'values': ','.join(colors), 'goodnamesonly': 'true'}
+    r = requests.get(url='https://api.color.pizza/v1/', params=PARAMS)
+    data = r.json()
+    colorNames = []
+
+    for color in data['colors']:
+        colorNames.append(color['name'])
+    ax.set_yticks(tickPlacement, colorNames)
+    print(' ,'.join(colorNames))
+
+def som_plot(img, som_dim,gs):
     # Method for creating a small Kohonen Self-Organizing Map (SOM) of the image and
     # plotting the SOM on the screen. RGB values of the colors are printed on the screen. 
 
@@ -184,7 +209,7 @@ def som_plot(img, som_dim):
     
     print('\n')
     print('=' * 80)
-    print('Self-Organized Map of {} randomly picked colors:'.format(som_dim*som_dim))
+    print('Self-Organized Map of {} randomly picked:'.format(som_dim*som_dim))
     
     # Train the SOM model with small amount of iterations. 
     som = SOM(som_dim, som_dim, 3, 10)
@@ -192,10 +217,13 @@ def som_plot(img, som_dim):
 
     #Get output grid from the SOM. This is plotted as color palette. 
     image_grid = som.get_centroids()
-    plt.figure(figsize=(5, 5))
+    plt.subplot(gs.new_subplotspec((1,2), colspan=1, rowspan=2))
+    plt.gca().axes.xaxis.set_ticklabels([])
+    plt.gca().axes.yaxis.set_ticklabels([])
     plt.imshow(image_grid)
-    plt.title('Color map')
-    plt.show()
+    plt.title('Color map', y=-0.1)
+    # plt.savefig(curr_file)
+    # plt.show()
 
     # Create RGB palette values from the image_grid.
     grid = np.array(image_grid)
@@ -210,8 +238,8 @@ def som_plot(img, som_dim):
             hex_color = '#{:02x}{:02x}{:02x}'.format(grid[i, j, 0], grid[i, j, 1], grid[i, j, 2])
             hex_df.iloc[i,j] = hex_color
 
-    print('RGB values:')
-    print(rgb_df)
+    # print('RGB values:')
+    # print(rgb_df)
     print('\n')
     print('HEX color values:')
     print(hex_df)

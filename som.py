@@ -8,7 +8,8 @@ https://codesachin.wordpress.com/2015/11/28/self-organizing-maps-with-googles-te
 The code has been ported to Tensorflow v 1.6.0 by Mikko Kursula. 
 """
 
-import tensorflow as tf
+#downloaded a newer version of tenserflow, dont have the skill to mess with this yet...
+import tensorflow.compat.v1 as tf
 import numpy as np
  
 class SOM(object):
@@ -55,7 +56,7 @@ class SOM(object):
  
             #Randomly initialized weightage vectors for all neurons,
             #stored together as a matrix Variable of size [m*n, dim]
-            self._weightage_vects = tf.Variable(tf.random_normal(
+            self._weightage_vects = tf.Variable(tf.random.normal(
                 [m*n, dim]))
  
             #Matrix of size [m*n, 2] for SOM grid locations
@@ -68,9 +69,9 @@ class SOM(object):
             #will be fed in during training
  
             #The training vector
-            self._vect_input = tf.placeholder("float", [dim])
+            self._vect_input = tf.compat.v1.placeholder("float", [dim])
             #Iteration number
-            self._iter_input = tf.placeholder("float")
+            self._iter_input = tf.compat.v1.placeholder("float")
  
             ##CONSTRUCT TRAINING OP PIECE BY PIECE
             #Only the final, 'root' training op needs to be assigned as
